@@ -18,4 +18,53 @@ We did not check for the usual book of the RTO/RPO as the applications are in th
 In one large application, we had 2 clusters - one is east-us and other in north-eu. We labelled them as BLUE and GREEN.
 Only 1 cluster is live and running at a given point of time. So, this is a warm standby mode where the inactive cluster is ready except it has replicas set to 0 so no workloads are running there.
 We have 1 instance of SQL Server running, with a global replica. So the Pods from both servers point to the same SQL DB.
-In the event of a disaster (or a mock up), considering the 'supposed to be the live cluster' is down, we change the replicas to 1 for the inactive cluster and merge the PR. Argo CD picks up the changes and deploys the changes and the Route 53 directs the traffic to the running cluster
+In the event of a disaster (or a mock up), considering the 'supposed to be the live cluster' is down, we change the replicas to 1 for the inactive cluster and merge the PR. Argo CD picks up the changes and deploys the changes and the Route 53 directs the traffic to the running cluster. `make sure you replicate this Route 53 routing`
+
+## Can you talk about scaling in kubernetes with some examples
+Kubernetes can resize clusters depending the current load. If we are hosting a microservice in a Pod, them if that pod, occasionally, has to work too hard, especially during the month end where due to trade expiries, traders place more transactions into the system. That mocroservice running in a pod are automatically replicated. For to be able to replicate itself, the microservice has to be written in such a way. In one of our examples, we have a web frontend and a API gateway, which is the single point of entry from the frontend. Trade orders and deals are sent my trade capture microservice to activeMQ and the trade status microservice sends and reads the trade data from the backend database. The frontend routes the read requests to the trade status microservice to get the current status of the every deal. SO we cannot replicate the trade capture the m/s as that will push duplicate data to the queue. There are some stateless m/s like service which reads data from the DB.(mongo replication is possible with statefulsets).API gateway is stateless so they are great candidate for replication. We set HPA, which is a kubernetes controller which keeps monitoring the resource utilization say CPU utilization and if it is more than the threshold, it modifies the deployment and changes the replica counts so that a new pod is spawned. HPA monitors the resource util via the metric server. The threshold depends on the request we have set on the pod. We set up HPA as individual rules for each of the deployments.
+![image](https://github.com/user-attachments/assets/ad28ffe0-0d9f-4356-abc0-d867d3b2c001)
+![image](https://github.com/user-attachments/assets/f8fccc14-bb90-41ef-9259-180d06bcd6e0)
+![image](https://github.com/user-attachments/assets/0bf65b5f-2f45-4fda-966d-a5fb28f02b5e)
+![image](https://github.com/user-attachments/assets/45b7405d-a00f-4e90-86e3-dad024be3f76)
+We need to create separate HPA for each one of the deployments.
+![image](https://github.com/user-attachments/assets/721e8d6e-ee68-43ec-99fb-f40ad1c9626a)
+![image](https://github.com/user-attachments/assets/0900def0-9315-4fac-b47a-31f013388046)
+
+## How is readiness probe linked to HPA
+When a new pod comes up, the program inside the pod may take sometime to come up but as soon as the pod comes into exixtence, the service thinks that the pod is ready and it starts diverting the traffic to the pod. In this case we will get 503 error. This is why we set readiness probe in the pod or deployment definition.
+![image](https://github.com/user-attachments/assets/fbb535da-4f27-44ef-99af-eed074aecfb9)
+![image](https://github.com/user-attachments/assets/a22c450b-f95d-4816-97e7-49b6862d2fd4)
+![image](https://github.com/user-attachments/assets/180f2e4e-218c-4bf5-8bf7-251189af66d6)
+![image](https://github.com/user-attachments/assets/e3876ce6-43d3-4a0e-9b76-2e0279f20d4f)
+![image](https://github.com/user-attachments/assets/b2a24880-e5ec-4168-a950-b6dc692b66de)
+Liveness probe runs for the entire duration of the pod and if the probe fails, the container inside the pod is restarted.
+![image](https://github.com/user-attachments/assets/c13fe073-2ade-47e7-a20c-79030f493a3f)
+If the pod is not a http webserver, we can set a command to check the readiless -
+![image](https://github.com/user-attachments/assets/ac0eb97e-3404-42f6-bc34-3294ec27b873)
+We can also set up TCP probes.
+
+## What is the role of the Scheduler
+Scheduler runs in the master node and its purpose is to look for Nodes suitable for hosting new pods and then schedule it. Some times the Pods also gets evicted due to the QoS and then the scheduler reschedules the Pod in another Node.
+![image](https://github.com/user-attachments/assets/8f3c0f22-d270-471b-8522-f97bd9b25ee9)
+![image](https://github.com/user-attachments/assets/d4519b56-8093-4112-bbf7-ba000b66b0e9)
+Eviction algo - BestEffort, Burstable, Guaranteed
+Pod priorities are for the new pods to be scheduled.
+![image](https://github.com/user-attachments/assets/34d5495e-c150-46ee-a64c-e5c048ad21dd)
+![image](https://github.com/user-attachments/assets/4b493960-8fde-4437-a079-e3021355352f)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
