@@ -52,6 +52,69 @@ Pod priorities are for the new pods to be scheduled.
 ![image](https://github.com/user-attachments/assets/34d5495e-c150-46ee-a64c-e5c048ad21dd)
 ![image](https://github.com/user-attachments/assets/4b493960-8fde-4437-a079-e3021355352f)
 
+## How have you implemented cluster autoscaller
+Depending on the Nodes which we choose, say m5.large, it has 4 vCPUs. If we have set a request of 500m for the pod specification in the deployment and if the replicas are set to 20 then 20*500=10,000m=10 vCPUs
+
+![image](https://github.com/user-attachments/assets/d809cdfe-3433-49eb-a101-311a9947f787)
+
+Even though, in the above example, there are no traffic, the ClusterAS will kick in and will spin up 4 more m5.large.
+Under the hood the Nodes are ec2s. ec2s auto scales with the help og auto scaling groups. So the ClusterAS tells the ASG to provision more Nodes.
+
+`eksctl create cluster --name my-cluster --version 1.15 --managed --asg-access (by default it creates 2 m5.large)
+Autoscaler version and kubernetes version must match.
+If the ASG is limited to scale no. of Nodes, then ClusterAS cannot scale. So, we need to edit the ASG to set the right min and max limits.
+ClusterAS runs as a deployment(pod) in the kube-system namespace
+
+### Steps:
+- EKS cluster running
+- ASG in the Nodes
+- IAM permissions for ASG
+- create SA with IRSA for the ClusterAS
+- YAML
+```apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cluster-autoscaler
+  namespace: kube-system
+  labels:
+    app: cluster-autoscaler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cluster-autoscaler
+  template:
+    metadata:
+      labels:
+        app: cluster-autoscaler
+      annotations:
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+    spec:
+      serviceAccountName: cluster-autoscaler
+      containers:
+        - name: cluster-autoscaler
+          image: k8s.gcr.io/autoscaling/cluster-autoscaler:v1.29.0  # Match your k8s version
+          resources:
+            limits:
+              cpu: 100m
+              memory: 300Mi
+            requests:
+              cpu: 100m
+              memory: 300Mi
+          command:
+            - ./cluster-autoscaler
+            - --cloud-provider=aws
+            - --cluster-name=<cluster-name>
+            - --scan-interval=10s
+            - --balance-similar-node-groups
+            - --skip-nodes-with-system-pods=false
+            - --expander=least-waste
+            - --logtostderr=true
+            - --v=4
+          env:
+            - name: AWS_REGION
+              value: <region>
+  ```
 
 
 
